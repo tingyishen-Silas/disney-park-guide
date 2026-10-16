@@ -1,0 +1,62 @@
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+import assert from 'node:assert/strict';
+const browser=await chromium.launch({headless:true,channel:'chrome'});
+const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});
+const errors=[];
+page.on('pageerror',e=>errors.push(e.message));
+page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
+const base=process.env.GUIDE_URL||'http://127.0.0.1:4174/';
+await page.goto(base);
+for(const width of [320,390,768,1080]) {
+  await page.setViewportSize({width,height:844});
+  for(const name of ['home','early','entry','rides','shows','halloween','tips']) {
+    await page.goto(`${base}#${name}`);
+    await page.waitForTimeout(80);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`overflow ${width} ${name}`);
+  }
+}
+await page.setViewportSize({width:390,height:844});
+await page.goto(`${base}#rides`);
+assert.equal(await page.locator('.ride-card').count(),23);
+await page.selectOption('#area-filter','明日世界');
+assert.equal(await page.locator('.ride-card').count(),5);
+await page.selectOption('#thrill-filter','刺激');
+assert.equal(await page.locator('.ride-card').count(),1);
+await page.selectOption('#popularity-filter','1');
+assert.equal(await page.locator('.empty').count(),1);
+await page.click('#reset-filters');
+assert.equal(await page.locator('.ride-card').count(),23);
+await page.goto(`${base}#shows`);
+await page.click('[data-show-filter="recommended"]');
+assert.equal(await page.locator('.show-card').count(),6);
+const scenarios=await page.evaluate(()=>{
+  const run=time=>{const s=window.getGuideSchedule(new Date(time));return {before:s.before,after:s.after,next:s.next.map(x=>x.time),ongoing:s.ongoing.map(x=>x.id)};};
+  return [run('2026-10-16T15:20:00+08:00'),run('2026-10-17T15:20:00+08:00'),run('2026-10-17T18:30:00+08:00'),run('2026-10-17T21:36:00+08:00'),run('2026-10-18T00:00:00+08:00'),run('2026-10-17T07:20:00Z')];
+});
+assert.equal(scenarios[0].before,true);
+assert.deepEqual(scenarios[1].next,['15:35','15:45','16:40']);
+assert(scenarios[2].ongoing.includes('dance')&&scenarios[2].ongoing.includes('candy'));
+assert.equal(scenarios[3].next.length,0);
+assert.equal(scenarios[4].after,true);
+assert.deepEqual(scenarios[5].next,scenarios[1].next);
+await page.clock.install({time:new Date('2026-10-17T18:30:00+08:00')});
+await page.goto(`${base}#shows`);
+assert(await page.locator('.ongoing').textContent());
+await page.screenshot({path:'/private/tmp/disney-guide-shows.png',fullPage:true});
+await page.goto(`${base}#early`);
+await page.locator('[data-image="early-app.jpg"]').click();
+assert.equal(await page.locator('dialog').evaluate(el=>el.open),true);
+assert(await page.locator('dialog img').evaluate(img=>img.complete&&img.naturalWidth>0));
+await page.click('.close-dialog');
+assert.equal(await page.locator('dialog').evaluate(el=>el.open),false);
+await page.goto(`${base}#halloween`);
+assert.equal(await page.locator('.dance-detail').count(),5);
+await page.locator('.dance-detail summary').first().click();
+assert.equal(await page.locator('.dance-detail').first().getAttribute('open'),'');
+await page.goto(`${base}#home`);
+await page.screenshot({path:'/private/tmp/disney-guide-home.png',fullPage:true});
+await page.goto(`${base}#rides`);
+await page.screenshot({path:'/private/tmp/disney-guide-rides.png',fullPage:true});
+assert.deepEqual(errors,[]);
+console.log(JSON.stringify({result:'passed',widths:[320,390,768,1080],pages:7,attractions:23,recommendedShows:6,danceLocations:5,timeCases:6,errors}));
+await browser.close();
