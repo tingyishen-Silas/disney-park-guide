@@ -120,7 +120,7 @@
     document.title=`${{home:'一起去奇妙一下',early:'早享攻略',entry:'入园要求',rides:'项目推荐',shows:'表演时间',halloween:'万圣特别活动',tips:'有趣小 tips'}[page]} · 10.17 游园手册`;
     if(page==='rides')renderRides();
     if(page==='shows')updateLive();
-    window.scrollTo(0,0);
+    window.scrollTo({top:0,left:0,behavior:'instant'});
     if(anchor)requestAnimationFrame(()=>document.getElementById(page==='shows'?`show-${anchor}`:anchor)?.scrollIntoView({block:'center'}));
   }
   main.addEventListener('change',e=>{
